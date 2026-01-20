@@ -1,0 +1,134 @@
+/* Shared styles for Login and Register pages */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: radial-gradient(circle at 25% 20%, rgba(59, 130, 246, 0.08), transparent 32%), rgb(var(--primary));
+  font-family: 'Inter', sans-serif;
+}
+
+.auth-form {
+  background-color: rgb(var(--card));
+  padding: 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+  border: 1px solid rgb(var(--border) / 0.5);
+  width: 100%;
+  max-width: 400px;
+  color: rgb(var(--text-primary));
+}
+
+.auth-form h2 {
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: rgb(var(--text-primary));
+  margin-bottom: 2rem;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  color: rgb(var(--text-secondary));
+  margin-bottom: 0.5rem;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgb(var(--border) / 0.6);
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background-color: rgb(var(--surface) / 0.6);
+  color: rgb(var(--text-primary));
+  backdrop-filter: blur(6px);
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: rgb(var(--accent));
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+.auth-button {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent) / 0.85));
+  color: rgb(var(--text-primary));
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.auth-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+}
+
+.auth-button:disabled {
+  background-color: rgb(var(--surface) / 0.6);
+  color: rgb(var(--text-secondary));
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: hsl(var(--danger));
+  background-color: hsl(var(--danger) / 0.1);
+  border: 1px solid hsl(var(--danger));
+  padding: 0.75rem;
+  border-radius: 4px;
+  text-align: center;
+  margin-top: 1.5rem;
+  font-weight: 500;
+}
+
+.field-error {
+  color: hsl(var(--danger));
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.redirect-link {
+  text-align: center;
+  margin-top: 1.5rem;
+  color: rgb(var(--text-secondary));
+}
+
+.redirect-link a {
+  color: rgb(var(--accent));
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.redirect-link a:hover {
+  text-decoration: underline;
+}
+
+/* Simple spinner for loading state on button */
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  width: 16px;
+  height: 16px;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

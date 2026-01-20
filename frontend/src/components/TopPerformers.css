@@ -1,0 +1,69 @@
+.top-performers-title {
+  text-align: center;
+  font-size: 1.1rem;
+  margin-bottom: 1.2rem;
+  font-weight: 700;
+  color: rgb(var(--text-primary));
+}
+
+.top-performers-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.performer-item {
+  display: flex;
+  align-items: center;
+  padding: 0.8rem 0.6rem;
+  border-radius: 10px;
+  transition: background-color 0.2s ease-in-out, transform 0.2s ease;
+  margin-bottom: 0.4rem;
+}
+
+.performer-item:hover {
+  background-color: rgb(var(--accent) / 0.08);
+  transform: translateY(-1px);
+}
+
+.performer-rank {
+  font-size: 1rem;
+  font-weight: 800;
+  width: 40px;
+  text-align: center;
+}
+
+.performer-name {
+  flex-grow: 1;
+  font-weight: 600;
+  padding: 0 1rem;
+  color: rgb(var(--text-primary));
+}
+
+.performer-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.85rem;
+  color: rgb(var(--text-secondary));
+}
+
+.performer-views {
+  font-weight: 700;
+  color: rgb(var(--text-primary));
+}
+
+.performer-engagement {
+  opacity: 0.75;
+}
+
+/* Medal colors */
+.performer-item:nth-child(1) .performer-rank {
+  color: rgb(var(--accent));
+}
+.performer-item:nth-child(2) .performer-rank {
+  color: rgb(var(--success));
+}
+.performer-item:nth-child(3) .performer-rank {
+  color: rgb(var(--surface));
+}

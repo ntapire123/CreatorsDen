@@ -1,0 +1,131 @@
+/* Spacing + layout utilities for premium dashboard */
+
+:root {
+  --gap-xs: 1rem;
+  --gap-sm: 1.25rem;
+  --gap-md: 1.5rem;
+  --gap-lg: 2rem;
+
+  --sidebar-w: 16rem;
+  --sidebar-collapsed: 4rem;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.sidebar.collapsed .nav-text {
+  display: none !important;
+}
+
+.card-premium {
+  min-height: 12rem;
+  padding: 2rem;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(135deg, rgba(51, 65, 85, 0.35), rgba(15, 23, 42, 0.65));
+  backdrop-filter: blur(16px);
+  border: 1px solid rgb(var(--border) / 0.5);
+}
+
+.grid-premium {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.75rem;
+  width: 100%;
+  min-width: 0;
+}
+.page-container {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+@media (min-width: 640px) {
+  .page-container {
+    padding: 1.5rem 1.5rem 2.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .page-container {
+    padding: 2rem 2rem 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-container {
+    padding: 3rem 2.5rem 3.5rem;
+  }
+}
+
+.grid-luxe {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--gap-lg);
+  width: 100%;
+}
+
+.card,
+.metric-card {
+  margin: 0;
+  padding: 1.5rem;
+  min-height: auto;
+  height: 100%;
+}
+
+@media (min-width: 768px) {
+  .card,
+  .metric-card {
+    padding: 1.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .card,
+  .metric-card {
+    padding: 2rem;
+  }
+}
+
+/* Mobile-first tightening for small devices */
+@media (max-width: 640px) {
+  .page-container {
+    padding: 0.85rem 0.9rem 1.5rem;
+  }
+  .grid-premium,
+  .grid-luxe {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .card,
+  .metric-card {
+    padding: 1.25rem;
+  }
+  .card-premium {
+    padding: 1.5rem;
+  }
+}
+
+.section-gap {
+  display: grid;
+  gap: var(--gap-sm);
+}
+
+@media (min-width: 768px) {
+  .section-gap {
+    gap: var(--gap-lg);
+  }
+}
+

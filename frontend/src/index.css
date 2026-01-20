@@ -1,0 +1,145 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --primary: 15 23 42;      /* #0F172A */
+  --secondary: 30 41 59;    /* #1E293B */
+  --accent: 59 130 246;     /* #3B82F6 */
+  --success: 16 185 129;    /* #10B981 */
+  --card: 30 41 59;         /* #1E293B */
+  --surface: 51 65 85;      /* #334155 */
+  --text-primary: 248 250 252; /* #F8FAFC */
+  --text-secondary: 203 213 225; /* #CBD5E1 */
+  --border: 71 85 105;      /* #475569 */
+
+  /* legacy tokens mapped to new palette to avoid code churn */
+  --black: var(--primary);
+  --white: var(--text-primary);
+  --navy: var(--primary);
+  --navy-light: var(--accent);
+  --teal: var(--success);
+  --tan: var(--text-secondary);
+  --bg-dark: var(--primary);
+  --bg-card: var(--card);
+  --text-dark: var(--primary);
+  --border-light: var(--border);
+  --danger: 239 68 68; /* #ef4444 */
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.08), transparent 28%), rgb(var(--primary));
+  color: rgb(var(--text-primary));
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.card,
+.metric-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)), rgb(var(--card));
+  color: rgb(var(--text-primary));
+  border: 1px solid rgb(var(--border) / 0.5);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.card:hover,
+.metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.45);
+  border-color: rgb(var(--accent) / 0.5);
+}
+
+.metric-value {
+  color: rgb(var(--accent));
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+.charts-container {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)), rgb(var(--card));
+  border-radius: 16px;
+}
+
+.btn {
+  border: 1px solid rgb(var(--border) / 0.5);
+  border-radius: 10px;
+  font-weight: 600;
+  padding: 12px 18px;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  color: rgb(var(--text-primary));
+  background: rgb(var(--surface) / 0.6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, rgb(var(--accent) / 0.9), rgb(var(--accent) / 0.75));
+  color: rgb(var(--text-primary));
+  border-color: rgb(var(--accent) / 0.8);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent) / 0.85));
+  transform: translateY(-1px) scale(1.01);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, rgb(var(--success) / 0.9), rgb(var(--success) / 0.75));
+  color: rgb(var(--text-primary));
+  border-color: rgb(var(--success) / 0.8);
+}
+
+.table-header {
+  background: rgb(var(--accent) / 0.12);
+  color: rgb(var(--text-primary));
+}
+
+.table-row:hover {
+  background: rgb(var(--accent) / 0.08);
+}
+
+.sidebar {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92));
+  border-right: 1px solid rgb(var(--border) / 0.6);
+}
+
+.sidebar-text {
+  color: rgb(var(--text-secondary));
+}
+
+.nav-link:hover {
+  color: rgb(var(--text-primary));
+}
+
+/* Recharts overrides */
+.recharts-text {
+  fill: rgb(var(--text-primary)) !important;
+  color: rgb(var(--text-primary)) !important;
+}
+.recharts-pie-label-text {
+  fill: rgb(var(--text-primary)) !important;
+}
+.recharts-bar {
+  fill: rgb(var(--accent)) !important;
+}
+.recharts-line {
+  stroke: rgb(var(--accent)) !important;
+  stroke-width: 3px !important;
+}
+.recharts-pie-sector {
+  stroke: rgb(var(--border) / 0.6);
+  stroke-width: 1px;
+}
