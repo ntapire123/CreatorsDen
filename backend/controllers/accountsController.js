@@ -1,44 +1,148 @@
 const Account = require('../models/Account');
+const Creator = require('../models/Creator');
 const Posts = require('../models/Posts');
 const { encrypt, decrypt } = require('../utils/crypto');
-const { getYouTubeClient, getInstagramAPI, getTikTokAPI } = require('../config/oauthConfig');
+const { YouTube, Instagram, TikTok, getYouTubeClient } = require('../config/oauthConfig');
+const { google } = require('googleapis');
 const axios = require('axios');
 
 const linkAccount = async (req, res) => {
   try {
-    const { platform } = req.query;
-    const config = require('../config/oauthConfig');
-
-    if (!config[platform]) {
-      return res.status(400).json({ success: false, message: 'Invalid platform' });
+    const { platform } = req.params;
+    
+    // Validate platform
+    const validPlatforms = ['YouTube', 'Instagram', 'TikTok'];
+    if (!validPlatforms.includes(platform)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid platform. Must be YouTube, Instagram, or TikTok' 
+      });
     }
 
-    const authUrl = config[platform].getAuthUrl(req.user.id);
-    res.json({ success: true, authUrl });
+    // Ensure user is a creator
+    if (req.user.role !== 'creator') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Only creators can link accounts' 
+      });
+    }
+
+    // Find creator profile by userId
+    const creator = await Creator.findOne({ userId: req.user.id });
+    if (!creator) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Creator profile not found. Please create a creator profile first.' 
+      });
+    }
+
+    // Get platform config
+    const platformConfig = { YouTube, Instagram, TikTok }[platform];
+    if (!platformConfig) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Platform configuration not found' 
+      });
+    }
+
+    // Generate authorization URL with creatorId as state parameter
+    const creatorId = creator._id.toString();
+    const authUrl = platformConfig.getAuthUrl(creatorId);
+
+    // Return the URL in JSON response
+    res.json({ 
+      success: true, 
+      data: { 
+        url: authUrl,
+        oauthUrl: authUrl // for backward compatibility
+      } 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error initiating OAuth flow:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to initiate OAuth flow' 
+    });
   }
 };
 
 const handleCallback = async (req, res) => {
   try {
-    const { code, state, platform } = req.query;
-    const config = require('../config/oauthConfig');
+    const { platform } = req.params;
+    const { code, state, error } = req.query;
 
-    const tokens = await config[platform].getTokens(code);
+    // Handle OAuth errors
+    if (error) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent(error)}`);
+    }
 
-    const account = new Account({
-      creatorId: state,
-      platform,
-      username: tokens.username,
-      apiToken: tokens.access_token,
-      refreshToken: tokens.refresh_token
-    });
+    if (!code || !state) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent('Missing authorization code or state')}`);
+    }
 
-    await account.save();
-    await syncPosts({ params: { accountId: account._id } }, res);
+    // Find creator by state (creatorId)
+    const creator = await Creator.findById(state);
+    if (!creator) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent('Invalid state parameter')}`);
+    }
+
+    let accountData;
+    let platformConfig;
+
+    try {
+      // Get platform configuration and handle callback
+      switch (platform) {
+        case 'YouTube':
+          platformConfig = oauthConfig.YouTube;
+          accountData = await handleYouTubeCallback(code, creator);
+          break;
+        
+        case 'TikTok':
+          platformConfig = oauthConfig.TikTok;
+          accountData = await handleTikTokCallback(code, creator);
+          break;
+        
+        case 'Instagram':
+          platformConfig = oauthConfig.Instagram;
+          accountData = await handleInstagramCallback(code, creator);
+          break;
+        
+        default:
+          throw new Error('Unsupported platform');
+      }
+    } catch (configError) {
+      console.error(`OAuth configuration error for ${platform}:`, configError.message);
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent('Service not configured')}`);
+    }
+
+    // Upsert account
+    await Account.findOneAndUpdate(
+      { 
+        creatorId: creator._id, 
+        platform: platform,
+        accountId: accountData.accountId 
+      },
+      {
+        creatorId: creator._id,
+        platform: platform,
+        accountId: accountData.accountId,
+        accountName: accountData.accountName,
+        avatar: accountData.avatar,
+        apiToken: accountData.accessToken,
+        refreshToken: accountData.refreshToken,
+        connectedAt: new Date(),
+        needsReconnection: false,
+        lastSynced: new Date()
+      },
+      { upsert: true, new: true }
+    );
+
+    // Redirect with success
+    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?success=${encodeURIComponent(`${platform} account connected successfully`)}`);
+
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Callback failed' });
+    console.error('OAuth callback error:', error);
+    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent('Failed to connect account')}`);
   }
 };
 
@@ -138,17 +242,21 @@ const refreshTokens = async (req, res) => {
 const testToken = async (platform, token) => {
   try {
     switch (platform) {
-      case 'YouTube':
-        const youtube = getYouTubeClient();
-        youtube.setCredentials({ access_token: token });
-        await youtube.youtube('v3').channels.list({ part: 'id', mine: true });
+      case 'YouTube': {
+        const client = getYouTubeClient();
+        client.setCredentials({ access_token: token });
+        const youtube = google.youtube({ version: 'v3', auth: client });
+        await youtube.channels.list({ part: 'id', mine: true });
         return true;
-      case 'Instagram':
+      }
+      case 'Instagram': {
         const response = await axios.get(`https://graph.instagram.com/me?access_token=${token}`);
         return !!response.data.id;
-      case 'TikTok':
+      }
+      case 'TikTok': {
         const ttResponse = await axios.get(`https://open-api.tiktok.com/research/user/info/?access_token=${token}`);
         return !!ttResponse.data;
+      }
       default:
         return false;
     }
@@ -158,10 +266,11 @@ const testToken = async (platform, token) => {
 };
 
 const fetchYouTubePosts = async (token, username) => {
-  const youtube = getYouTubeClient();
-  youtube.setCredentials({ access_token: token });
+  const client = getYouTubeClient();
+  client.setCredentials({ access_token: token });
 
-  const response = await youtube.youtube('v3').search.list({
+  const youtube = google.youtube({ version: 'v3', auth: client });
+  const response = await youtube.search.list({
     part: 'id,snippet',
     channelId: username,
     maxResults: 15,
@@ -205,6 +314,102 @@ const fetchTikTokPosts = async (token, username) => {
     likes: video.like_count,
     publishedAt: video.create_time
   }));
+};
+
+// TikTok OAuth callback handler
+const handleTikTokCallback = async (code, creator) => {
+  try {
+    // Exchange code for tokens
+    const tokenResponse = await oauthConfig.TikTok.getTokens(code);
+    
+    // Get user info
+    const userInfoResponse = await oauthConfig.TikTok.getUserInfo(
+      tokenResponse.access_token, 
+      tokenResponse.open_id
+    );
+
+    const userInfo = userInfoResponse.data?.user;
+    if (!userInfo) {
+      throw new Error('Failed to fetch TikTok user information');
+    }
+
+    return {
+      accountId: userInfo.open_id,
+      accountName: userInfo.display_name || `TikTok User ${userInfo.open_id.slice(-8)}`,
+      avatar: userInfo.avatar_url,
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token
+    };
+  } catch (error) {
+    console.error('TikTok OAuth callback error:', error);
+    throw new Error(`TikTok authentication failed: ${error.message}`);
+  }
+};
+
+// Instagram OAuth callback handler
+const handleInstagramCallback = async (code, creator) => {
+  try {
+    // Exchange code for tokens
+    const tokenResponse = await oauthConfig.Instagram.getTokens(code);
+    
+    // Get user info
+    const userInfoResponse = await oauthConfig.Instagram.getUserInfo(tokenResponse.access_token);
+
+    const userInfo = userInfoResponse.data;
+    if (!userInfo) {
+      throw new Error('Failed to fetch Instagram user information');
+    }
+
+    return {
+      accountId: userInfo.id,
+      accountName: userInfo.username || `Instagram User ${userInfo.id.slice(-8)}`,
+      avatar: null, // Instagram Basic Display doesn't provide avatar in this endpoint
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token
+    };
+  } catch (error) {
+    console.error('Instagram OAuth callback error:', error);
+    throw new Error(`Instagram authentication failed: ${error.message}`);
+  }
+};
+
+// YouTube OAuth callback handler (existing logic, enhanced)
+const handleYouTubeCallback = async (code, creator) => {
+  try {
+    const tokenResponse = await oauthConfig.YouTube.getTokens(code);
+    
+    // Get YouTube channel info
+    const { google } = require('googleapis');
+    const oauth2Client = new google.auth.OAuth2(
+      oauthConfig.YouTube.clientId,
+      oauthConfig.YouTube.clientSecret,
+      oauthConfig.YouTube.redirectUri
+    );
+    
+    oauth2Client.setCredentials(tokenResponse);
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+    
+    const channelResponse = await youtube.channels.list({
+      part: 'snippet',
+      mine: true
+    });
+
+    const channel = channelResponse.data.items?.[0];
+    if (!channel) {
+      throw new Error('Failed to fetch YouTube channel information');
+    }
+
+    return {
+      accountId: channel.id,
+      accountName: channel.snippet.title || `YouTube Channel ${channel.id.slice(-8)}`,
+      avatar: channel.snippet.thumbnails?.default?.url,
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token
+    };
+  } catch (error) {
+    console.error('YouTube OAuth callback error:', error);
+    throw new Error(`YouTube authentication failed: ${error.message}`);
+  }
 };
 
 module.exports = {

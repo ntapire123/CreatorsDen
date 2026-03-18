@@ -1,6 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const { authenticateToken, requireAdmin } = require("../middleware/auth");
+const authenticateToken = require("../middleware/auth");
+// Simple admin guard; reuse the decoded user set by authenticateToken
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ success: false, message: "Admin access required" });
+  }
+  next();
+};
 const {
   linkAccount,
   handleCallback,
@@ -27,11 +34,11 @@ router.get("/", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/accounts/link?platform=YouTube
-router.get("/link", authenticateToken, linkAccount);
+// GET /api/accounts/auth/:platform - Initiate OAuth flow
+router.get("/auth/:platform", authenticateToken, linkAccount);
 
-// GET /api/accounts/callback
-router.get("/callback", handleCallback);
+// GET /api/accounts/callback/:platform - Handle OAuth callback
+router.get("/callback/:platform", handleCallback);
 
 // POST /api/accounts/manual-link
 router.post("/manual-link", authenticateToken, requireAdmin, manualLink);

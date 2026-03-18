@@ -34,6 +34,10 @@ const accountSchema = new mongoose.Schema({
   lastSynced: {
     type: Date,
     default: Date.now
+  },
+  needsReconnection: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
@@ -112,16 +116,68 @@ accountSchema.methods.refreshTokens = async function() {
 
 // Platform-specific refresh methods (placeholders)
 accountSchema.methods.refreshYouTubeTokens = async function(currentTokens) {
-  // YouTube OAuth refresh logic would be implemented here
-  // For now, this is a placeholder that updates lastSynced
-  this.lastSynced = new Date();
-  await this.save();
+  const { google } = require('googleapis');
+  const { oauthConfig } = require('../config/oauthConfig');
+  
+  try {
+    if (!currentTokens.refreshToken) {
+      throw new Error('No refresh token available for YouTube');
+    }
 
-  return {
-    success: true,
-    message: 'YouTube tokens refreshed',
-    lastSynced: this.lastSynced
-  };
+    // Create OAuth2 client with the same configuration used during initial auth
+    const oauth2Client = new google.auth.OAuth2(
+      oauthConfig.YouTube.clientId,
+      oauthConfig.YouTube.clientSecret,
+      oauthConfig.YouTube.redirectUri
+    );
+
+    // Set the refresh token
+    oauth2Client.setCredentials({
+      refresh_token: currentTokens.refreshToken
+    });
+
+    // Get new access token
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    
+    if (!credentials.access_token) {
+      throw new Error('Failed to obtain new access token');
+    }
+
+    // Update the account with new tokens
+    this.setTokens(credentials.access_token, currentTokens.refreshToken);
+    this.lastSynced = new Date();
+    
+    // Clear any reconnection flags if previously set
+    if (this.needsReconnection) {
+      this.needsReconnection = false;
+    }
+    
+    await this.save();
+
+    return {
+      success: true,
+      message: 'YouTube tokens refreshed successfully',
+      tokens: {
+        access_token: credentials.access_token,
+        refresh_token: currentTokens.refreshToken
+      },
+      lastSynced: this.lastSynced
+    };
+  } catch (error) {
+    // Mark account as needing reconnection if refresh fails
+    this.needsReconnection = true;
+    await this.save();
+    
+    // Check for specific OAuth errors
+    if (error.code === 401 || 
+        error.message?.includes('invalid_grant') || 
+        error.message?.includes('revoked') ||
+        error.message?.includes('invalid_refresh_token')) {
+      throw new Error(`YouTube refresh token invalid or revoked. Account needs reconnection: ${error.message}`);
+    }
+    
+    throw new Error(`YouTube token refresh failed: ${error.message}`);
+  }
 };
 
 accountSchema.methods.refreshInstagramTokens = async function(currentTokens) {

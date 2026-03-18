@@ -112,6 +112,9 @@ const getMetricsAggregated = async (req, res) => {
       });
     }
 
+    // Extract filter parameters
+    const { platform, accountId } = req.query;
+
     // Find creator profile for the current user
     const creator = await Creator.findOne({ userId: req.user.id });
     if (!creator) {
@@ -125,13 +128,26 @@ const getMetricsAggregated = async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    // Build match stage with filters
+    const matchStage = {
+      creatorId: creator._id,
+      timestamp: { $gte: thirtyDaysAgo }
+    };
+
+    // Add platform filter if specified and not "All"
+    if (platform && platform !== 'All') {
+      matchStage.platform = platform;
+    }
+
+    // Add account filter if specified and not "All"
+    if (accountId && accountId !== 'All') {
+      matchStage.accountId = accountId;
+    }
+
     // Aggregation pipeline
     const results = await Analytics.aggregate([
       {
-        $match: {
-          creatorId: creator._id,
-          timestamp: { $gte: thirtyDaysAgo }
-        }
+        $match: matchStage
       },
       {
         $group: {
@@ -171,6 +187,9 @@ const getPlatformStats = async (req, res) => {
       });
     }
 
+    // Extract filter parameters
+    const { platform, accountId } = req.query;
+
     // Find creator profile
     const creator = await Creator.findOne({ userId: req.user.id });
     if (!creator) {
@@ -184,13 +203,26 @@ const getPlatformStats = async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    // Build match stage with filters
+    const matchStage = {
+      creatorId: creator._id,
+      timestamp: { $gte: thirtyDaysAgo }
+    };
+
+    // Add platform filter if specified and not "All"
+    if (platform && platform !== 'All') {
+      matchStage.platform = platform;
+    }
+
+    // Add account filter if specified and not "All"
+    if (accountId && accountId !== 'All') {
+      matchStage.accountId = accountId;
+    }
+
     // Aggregation pipeline
     const results = await Analytics.aggregate([
       {
-        $match: {
-          creatorId: creator._id,
-          timestamp: { $gte: thirtyDaysAgo }
-        }
+        $match: matchStage
       },
       {
         $group: {

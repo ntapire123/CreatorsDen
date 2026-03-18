@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useMemo, useEffect, useState } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import MetricCard from '../components/MetricCard';
@@ -10,8 +10,128 @@ import useApi from '../hooks/useApi';
 import { creator } from '../services/api';
 
 const CreatorDashboardView = () => {
-  const { data: metricsData, loading: metricsLoading, error: metricsError } = useApi(creator.getMetricsAggregated);
-  const { data: platformStats, loading: platformLoading, error: platformError } = useApi(creator.getPlatformStats);
+  const { API_URL, token, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [notification, setNotification] = useState(null);
+  
+  // Filtering state
+  const [selectedPlatform, setSelectedPlatform] = useState('All');
+  const [selectedAccount, setSelectedAccount] = useState('All');
+  const [connectedAccounts, setConnectedAccounts] = useState([]);
+  
+  // Responsive state
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 600);
+  
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 600);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  // Build query string for API calls
+  const apiQueryString = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedPlatform !== 'All') params.append('platform', selectedPlatform);
+    if (selectedAccount !== 'All') params.append('accountId', selectedAccount);
+    return params.toString();
+  }, [selectedPlatform, selectedAccount]);
+
+  const { data: metricsData, loading: metricsLoading, error: metricsError } = useApi(
+    creator.getMetricsAggregated(apiQueryString ? `?${apiQueryString}` : '')
+  );
+
+  const { data: platformStats, loading: platformLoading, error: platformError } = useApi(
+    creator.getPlatformStats(apiQueryString ? `?${apiQueryString}` : '')
+  );
+  const { data: accountsData, loading: accountsLoading, error: accountsError } = useApi(creator.getAccounts);
+
+  // Fetch connected accounts on mount
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        const response = await fetch(`${API_URL}/accounts`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await response.json();
+        if (data.success) {
+          setConnectedAccounts(data.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch accounts:', error);
+      }
+    };
+    
+    if (token) {
+      fetchAccounts();
+    }
+  }, [token, API_URL]);
+
+  // Filter accounts based on selected platform
+  const filteredAccounts = useMemo(() => {
+    if (selectedPlatform === 'All') {
+      return connectedAccounts;
+    }
+    return connectedAccounts.filter(account => account.platform === selectedPlatform);
+  }, [connectedAccounts, selectedPlatform]);
+
+  // Reset account filter when platform changes
+  useEffect(() => {
+    setSelectedAccount('All');
+  }, [selectedPlatform]);
+
+  // Check for success/error messages from OAuth callback
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+    
+    if (success) {
+      setNotification({ type: 'success', message: decodeURIComponent(success) });
+      searchParams.delete('success');
+      setSearchParams(searchParams, { replace: true });
+      setTimeout(() => setNotification(null), 5000);
+    }
+    
+    if (error) {
+      setNotification({ type: 'error', message: decodeURIComponent(error) });
+      searchParams.delete('error');
+      setSearchParams(searchParams, { replace: true });
+      setTimeout(() => setNotification(null), 5000);
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleConnectPlatform = async (platform) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/accounts/auth/${platform}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.data?.url) {
+          window.location.href = data.data.url;
+        } else {
+          alert('No OAuth URL received');
+        }
+      } else {
+        const errorData = await response.json();
+        alert(`Error: ${errorData.message}`);
+      }
+    } catch (error) {
+      console.error('OAuth request failed:', error);
+      alert('Failed to initiate OAuth');
+    }
+  };
 
   const dailyData = useMemo(() => {
     const arr = Array.isArray(metricsData) ? metricsData : (metricsData?.data || []);
@@ -40,6 +160,208 @@ const CreatorDashboardView = () => {
 
   return (
     <div className="page-container">
+      {/* Notification Banner */}
+      {notification && (
+        <div 
+          style={{
+            padding: '1rem',
+            marginBottom: '1.5rem',
+            borderRadius: '8px',
+            backgroundColor: notification.type === 'success' 
+              ? 'rgba(76, 175, 80, 0.1)' 
+              : 'rgba(244, 67, 54, 0.1)',
+            border: `1px solid ${notification.type === 'success' ? 'rgba(76, 175, 80, 0.3)' : 'rgba(244, 67, 54, 0.3)'}`,
+            color: notification.type === 'success' ? 'rgb(76, 175, 80)' : 'rgb(244, 67, 54)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <span>{notification.message}</span>
+          <button 
+            onClick={() => setNotification(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'inherit',
+              cursor: 'pointer',
+              fontSize: '1.25rem',
+              padding: '0 0.5rem'
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Filtering Section */}
+      <div className="card-premium" style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <div style={{ fontSize: 'var(--h2-size)', fontWeight: 800, marginBottom: '0.5rem' }}>
+            Filter Analytics
+          </div>
+          <div style={{ color: 'rgb(var(--text-secondary))', fontSize: '0.9rem' }}>
+            Filter your metrics by platform and specific accounts
+          </div>
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          gap: '1rem', 
+          flexWrap: 'wrap', 
+          alignItems: 'center',
+          flexDirection: isMobile ? 'column' : 'row'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '0.5rem',
+            width: isMobile ? '100%' : 'auto'
+          }}>
+            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgb(var(--text-secondary))' }}>
+              Platform
+            </label>
+            <select 
+              value={selectedPlatform} 
+              onChange={(e) => setSelectedPlatform(e.target.value)}
+              style={{
+                padding: '0.75rem 1rem',
+                borderRadius: '8px',
+                border: '1px solid rgb(var(--border))',
+                backgroundColor: 'rgb(var(--background))',
+                color: 'rgb(var(--text))',
+                fontSize: '0.95rem',
+                minWidth: isMobile ? '100%' : '150px',
+                minHeight: '44px'
+              }}
+            >
+              <option value="All">All Platforms</option>
+              <option value="YouTube">YouTube</option>
+              <option value="TikTok">TikTok</option>
+              <option value="Instagram">Instagram</option>
+            </select>
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '0.5rem',
+            width: isMobile ? '100%' : 'auto'
+          }}>
+            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgb(var(--text-secondary))' }}>
+              Account
+            </label>
+            <select 
+              value={selectedAccount} 
+              onChange={(e) => setSelectedAccount(e.target.value)}
+              disabled={filteredAccounts.length === 0}
+              style={{
+                padding: '0.75rem 1rem',
+                borderRadius: '8px',
+                border: '1px solid rgb(var(--border))',
+                backgroundColor: 'rgb(var(--background))',
+                color: 'rgb(var(--text))',
+                fontSize: '0.95rem',
+                minWidth: isMobile ? '100%' : '200px',
+                minHeight: '44px',
+                opacity: filteredAccounts.length === 0 ? 0.5 : 1
+              }}
+            >
+              <option value="All">All Accounts</option>
+              {filteredAccounts.map(account => (
+                <option key={account._id} value={account._id}>
+                  {account.accountName || `${account.platform} Account`}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {(selectedPlatform !== 'All' || selectedAccount !== 'All') && (
+            <button 
+              onClick={() => {
+                setSelectedPlatform('All');
+                setSelectedAccount('All');
+              }}
+              style={{
+                padding: '0.75rem 1rem',
+                borderRadius: '8px',
+                border: '1px solid rgb(var(--border))',
+                backgroundColor: 'transparent',
+                color: 'rgb(var(--text-secondary))',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                alignSelf: isMobile ? 'stretch' : 'flex-end',
+                minHeight: '44px',
+                width: isMobile ? '100%' : 'auto'
+              }}
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Account Linking Section */}
+      <div className="card-premium" style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+            Connect Your Accounts
+          </div>
+          <div style={{ color: 'rgb(var(--text-secondary))', fontSize: '0.9rem' }}>
+            Link your social media accounts to track performance metrics
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => handleConnectPlatform('YouTube')}
+            className="btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem 1.5rem',
+              fontSize: '0.95rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <span>📺</span>
+            Connect YouTube
+          </button>
+          <button
+            onClick={() => handleConnectPlatform('Instagram')}
+            className="btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem 1.5rem',
+              fontSize: '0.95rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <span>📷</span>
+            Connect Instagram
+          </button>
+          <button
+            onClick={() => handleConnectPlatform('TikTok')}
+            className="btn"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem 1.5rem',
+              fontSize: '0.95rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <span>🎵</span>
+            Connect TikTok
+          </button>
+        </div>
+      </div>
+
       <div className="card-premium">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5rem', flexWrap: 'wrap' }}>
           <div>

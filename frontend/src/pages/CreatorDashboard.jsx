@@ -24,22 +24,18 @@ const CreatorDashboard = () => {
 
   const connectOAuth = async (platform) => {
     try {
-      const { data } = await oauth.getUrl(platform);
-      const { oauthUrl } = data;
-      const popup = window.open(oauthUrl, 'oauth', 'width=600,height=700');
+      const response = await oauth.initiate(platform);
       
-      const handleMessage = (e) => {
-        if (e.origin !== window.location.origin || e.data.type !== 'OAUTH_SUCCESS') {
-          return;
-        }
-        refetchAll();
-        popup.close();
-        window.removeEventListener('message', handleMessage);
-      };
-
-      window.addEventListener('message', handleMessage);
+      const { url } = response.data.data;
+      
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No authorization URL received');
+      }
     } catch (error) {
-      // OAuth error handled silently
+      console.error("Connection failed", error);
+      alert(error.message || "Could not initiate login");
     }
   };
 

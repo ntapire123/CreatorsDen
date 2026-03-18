@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 import { FaChartBar, FaUsers, FaStar, FaSignOutAlt, FaChevronLeft, FaBars, FaPlus } from 'react-icons/fa';
+import Footer from './Footer';
 
 const Sidebar = ({ isCollapsed, onToggle, user, onLogout, onNavigate }) => {
   const NavText = ({ children }) => {
@@ -127,7 +128,7 @@ const Layout = ({ children }) => {
   };
 
   const layoutClasses = [
-    'app-layout',
+    'app-container',
     isCollapsed && !isMobile ? 'sidebar-collapsed' : '',
     isMobile && isMobileMenuOpen ? 'sidebar-open' : '',
   ].join(' ');
@@ -153,9 +154,12 @@ const Layout = ({ children }) => {
         onNavigate={handleNav}
       />
 
-      <main className="main-content">
-        <div className="page-shell">{children}</div>
-      </main>
+      <div className="content-wrapper">
+        <main className="main-content">
+          <div className="page-shell">{children}</div>
+        </main>
+        <Footer />
+      </div>
     </div>
   );
 };

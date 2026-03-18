@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import './AuthForm.css'; // Import shared styles
+import Footer from '../components/Footer';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -58,7 +59,7 @@ const LoginPage = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="•••••••"
             required
           />
         </div>
@@ -74,6 +75,7 @@ const LoginPage = () => {
           Accounts are created by an admin.
         </p>
       </form>
+      <Footer />
     </div>
   );
 };

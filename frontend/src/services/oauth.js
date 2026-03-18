@@ -1,9 +1,13 @@
 import api from './api';
 
 export const oauth = {
-  getUrl: (platform, userId) => {
-    const url = `/oauth/${platform}${userId ? `?userId=${userId}` : ''}`;
-    return api.get(url);
+  // 1. We ask the backend for the URL (Protected by Token)
+  initiate: (platform) => {
+    return api.get(`/accounts/auth/${platform}`); 
   },
-  connect: (platform, code) => api.post(`/oauth/${platform}/connect`, { code }),
+  
+  // 2. We send the code back to the backend
+  connect: (platform, code) => {
+    return api.post(`/accounts/callback/${platform}`, { code });
+  }
 };
