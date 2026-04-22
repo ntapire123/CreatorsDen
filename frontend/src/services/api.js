@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const defaultApiUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000/api';
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  baseURL: process.env.REACT_APP_API_URL || defaultApiUrl,
   timeout: 15000, // Increased from 5000ms to 15000ms
 });
 
@@ -165,8 +167,13 @@ export const auth = {
 };
 
 export const creator = {
+  getProfile: () => api.get('/creator/profile'),
+  createProfile: (payload) => api.post('/creator/profile', payload),
   getAccounts: () => api.get('/creator/accounts'),
   deleteAccount: (accountId) => api.delete(`/creator/accounts/${accountId}`),
+  getAccountHistory: (accountId) => api.get(`/tracking/history/${accountId}`),
+  addAccount: (profileUrl) => api.post('/tracking/add', { profileUrl }),
+  deleteCreator: (creatorId) => api.delete(`/creator/${creatorId}`),
   getMetricsAggregated: () => api.get('/creator/metrics-aggregated'),
   getPlatformStats: () => api.get('/creator/platform-stats'),
 };
@@ -176,8 +183,7 @@ export const admin = {
   getTopPerformers: () => api.get('/admin/top-performers'),
   getCreatorDetails: (creatorId) => api.get(`/admin/creator/${creatorId}`),
   createCreator: ({ email, name, password }) => api.post('/admin/create-creator', { email, name, password }),
+  deleteCreator: (creatorId) => api.delete(`/creator/${creatorId}`),
 };
-
-export { oauth } from './oauth';
 
 export default api;

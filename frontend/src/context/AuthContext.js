@@ -1,8 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import { auth } from '../services/api';
 
 const AuthContext = createContext();
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -13,15 +12,24 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
     if (savedToken) {
-      setToken(savedToken);
-      setUser(JSON.parse(localStorage.getItem('user')));
+      try {
+        const savedUserRaw = localStorage.getItem('user');
+        const savedUser = savedUserRaw ? JSON.parse(savedUserRaw) : null;
+        setToken(savedToken);
+        setUser(savedUser);
+      } catch (error) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setToken(null);
+        setUser(null);
+      }
     }
     setLoading(false);
   }, []);
 
   const login = async (email, password) => {
     try {
-      const res = await axios.post(`${API_URL}/auth/login`, { email, password });
+      const res = await auth.login(email, password);
       if (res.data.token && res.data.user) {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('user', JSON.stringify(res.data.user));
@@ -38,7 +46,8 @@ export function AuthProvider({ children }) {
 
   const register = async (email, password, role) => {
     try {
-      const res = await axios.post(`${API_URL}/auth/register`, { email, password, role: role.toLowerCase() });
+      const normalizedRole = typeof role === 'string' ? role.toLowerCase() : 'creator';
+      const res = await auth.register(email, password, normalizedRole);
       if (res.data.token && res.data.user) {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('user', JSON.stringify(res.data.user));
@@ -61,7 +70,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, API_URL }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

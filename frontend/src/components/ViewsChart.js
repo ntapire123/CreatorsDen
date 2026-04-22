@@ -14,7 +14,17 @@ import './Chart.css';
 
 const ViewsChart = ({ data }) => {
   if (!data || data.length === 0) {
-    return <div className="chart-empty-state">No data available for Views Chart.</div>;
+    return (
+      <div className="chart-empty-state">
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem', opacity: 0.5 }}>📊</div>
+          <div style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Syncing data...</div>
+          <div style={{ color: 'var(--text-secondary)' }}>
+            Please check back in a few minutes for your analytics to appear.
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const chartData = data.map(item => ({

@@ -52,7 +52,7 @@ const Sidebar = ({ isCollapsed, onToggle, user, onLogout, onNavigate }) => {
         )}
         {user?.role === 'creator' && (
           <NavLink
-            to="/dashboard"
+            to="/"
             className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             onClick={onNavigate}
           >

@@ -1,39 +1,76 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
-const syncScheduler = require('./jobs/scheduler');
+const { startSyncScheduler } = require('./jobs/sync');
 const app = express();
 
-// Security middleware
-app.use(helmet());
+const isProduction = process.env.NODE_ENV === 'production';
+const port = Number.parseInt(process.env.PORT || '5000', 10);
+const rawOrigins = process.env.FRONTEND_URL || 'http://localhost:3000';
+const allowedOrigins = rawOrigins
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
+const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
 
-// Compression middleware
-app.use(compression());
+if (missingEnvVars.length > 0) {
+  console.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
 
 // CORS
-app.use(cors({ 
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : 'http://localhost:3000', 
-  credentials: true 
-}));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('CORS origin not allowed'));
+    },
+    credentials: true
+  })
+);
 
 // Middleware
 app.use(express.json());
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many auth requests. Please try again later.' }
+});
+
+const syncLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many sync requests. Please try again later.' }
+});
+
 // Connect DB
 connectDB();
+if (process.env.ENABLE_SYNC_SCHEDULER === 'true') {
+  startSyncScheduler();
+} else {
+  console.log('Sync scheduler disabled for this instance');
+}
 
 // Test route
 app.get('/api/test', (req, res) => res.json({ message: 'Server running' }));
 
 // Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/accounts', require('./routes/accounts'));
-app.use('/api/sync', require('./routes/sync'));
+app.use('/api/auth', authLimiter, require('./routes/auth'));
+app.use('/api/tracking', require('./routes/tracking'));
+app.use('/api/sync', syncLimiter, require('./routes/sync'));
 app.use('/api/creator', require('./middleware/auth'), require('./routes/creator'));
 app.use('/api/admin', require('./middleware/auth'), require('./routes/admin'));
 
@@ -44,13 +81,10 @@ app.use('*', (req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  res.status(err.status || 500).json({ success: false, message: err.message });
+  console.error(err);
+  const status = err.status || 500;
+  const message = isProduction && status === 500 ? 'Internal server error' : err.message;
+  res.status(status).json({ success: false, message });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server on port ${PORT}`);
-  
-  // Start the sync scheduler
-  syncScheduler.start();
-});
+app.listen(port, () => console.log(`Server on port ${port}`));

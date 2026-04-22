@@ -3,21 +3,26 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AdminDashboard from './AdminDashboard';
 import MetricCard from '../components/MetricCard';
-import ViewsChart from '../components/ViewsChart';
 import PlatformChart from '../components/PlatformChart';
-import EngagementPie from '../components/EngagementPie';
+import AddAccountForm from '../components/AddAccountForm';
+import SocialMediaSelector from '../components/SocialMediaSelector';
+import StatsGraph from '../components/StatsGraph';
 import useApi from '../hooks/useApi';
 import { creator } from '../services/api';
 
 const CreatorDashboardView = () => {
-  const { API_URL, token, user } = useAuth();
+  const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [notification, setNotification] = useState(null);
   
-  // Filtering state
-  const [selectedPlatform, setSelectedPlatform] = useState('All');
-  const [selectedAccount, setSelectedAccount] = useState('All');
+  // Creator profile state
+  const [creatorProfile, setCreatorProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState(null);
+  
+  // Connected accounts state
   const [connectedAccounts, setConnectedAccounts] = useState([]);
+  const [activeAccountId, setActiveAccountId] = useState('');
   
   // Responsive state
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600);
@@ -31,162 +36,215 @@ const CreatorDashboardView = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
-  // Build query string for API calls
-  const apiQueryString = useMemo(() => {
-    const params = new URLSearchParams();
-    if (selectedPlatform !== 'All') params.append('platform', selectedPlatform);
-    if (selectedAccount !== 'All') params.append('accountId', selectedAccount);
-    return params.toString();
-  }, [selectedPlatform, selectedAccount]);
 
-  const { data: metricsData, loading: metricsLoading, error: metricsError } = useApi(
-    creator.getMetricsAggregated(apiQueryString ? `?${apiQueryString}` : '')
-  );
-
-  const { data: platformStats, loading: platformLoading, error: platformError } = useApi(
-    creator.getPlatformStats(apiQueryString ? `?${apiQueryString}` : '')
-  );
-  const { data: accountsData, loading: accountsLoading, error: accountsError } = useApi(creator.getAccounts);
-
-  // Fetch connected accounts on mount
-  useEffect(() => {
-    const fetchAccounts = async () => {
-      try {
-        const response = await fetch(`${API_URL}/accounts`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        const data = await response.json();
-        if (data.success) {
-          setConnectedAccounts(data.data || []);
-        }
-      } catch (error) {
-        console.error('Failed to fetch accounts:', error);
-      }
-    };
-    
-    if (token) {
-      fetchAccounts();
-    }
-  }, [token, API_URL]);
-
-  // Filter accounts based on selected platform
-  const filteredAccounts = useMemo(() => {
-    if (selectedPlatform === 'All') {
-      return connectedAccounts;
-    }
-    return connectedAccounts.filter(account => account.platform === selectedPlatform);
-  }, [connectedAccounts, selectedPlatform]);
-
-  // Reset account filter when platform changes
-  useEffect(() => {
-    setSelectedAccount('All');
-  }, [selectedPlatform]);
-
-  // Check for success/error messages from OAuth callback
-  useEffect(() => {
-    const success = searchParams.get('success');
-    const error = searchParams.get('error');
-    
-    if (success) {
-      setNotification({ type: 'success', message: decodeURIComponent(success) });
-      searchParams.delete('success');
-      setSearchParams(searchParams, { replace: true });
-      setTimeout(() => setNotification(null), 5000);
-    }
-    
-    if (error) {
-      setNotification({ type: 'error', message: decodeURIComponent(error) });
-      searchParams.delete('error');
-      setSearchParams(searchParams, { replace: true });
-      setTimeout(() => setNotification(null), 5000);
-    }
-  }, [searchParams, setSearchParams]);
-
-  const handleConnectPlatform = async (platform) => {
+  // Create creator profile
+  const handleCreateProfile = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/accounts/auth/${platform}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await creator.createProfile({
+        name: user.email.split('@')[0], // Default name from email
+        bio: 'Content creator'
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.data?.url) {
-          window.location.href = data.data.url;
-        } else {
-          alert('No OAuth URL received');
-        }
-      } else {
-        const errorData = await response.json();
-        alert(`Error: ${errorData.message}`);
-      }
+
+      setCreatorProfile(response?.data?.data || null);
+      setProfileError(null);
+      setNotification({
+        type: 'success',
+        message: 'Creator profile created successfully!'
+      });
     } catch (error) {
-      console.error('OAuth request failed:', error);
-      alert('Failed to initiate OAuth');
+      console.error('Error creating creator profile:', error);
+      setNotification({
+        type: 'error',
+        message: 'Failed to create profile'
+      });
     }
   };
 
-  const dailyData = useMemo(() => {
-    const arr = Array.isArray(metricsData) ? metricsData : (metricsData?.data || []);
-    const grouped = arr.reduce((acc, item) => {
-      const date = item._id?.date || item.date;
-      if (!date) return acc;
-      if (!acc[date]) acc[date] = { date, totalViews: 0 };
-      acc[date].totalViews += item.totalViews || 0;
-      return acc;
-    }, {});
-    return Object.values(grouped).sort((a, b) => new Date(a.date) - new Date(b.date));
-  }, [metricsData]);
+  // Fetch creator profile first
+  useEffect(() => {
+    const fetchCreatorProfile = async () => {
+      try {
+        setProfileLoading(true);
+        const response = await creator.getProfile();
+        setCreatorProfile(response?.data?.data || null);
+        setProfileError(null);
+      } catch (error) {
+        if (error?.response?.status === 404) {
+          setCreatorProfile(null);
+          setProfileError('No Creator Found');
+        } else {
+          setProfileError('Error loading profile');
+        }
+        console.error('Error fetching creator profile:', error);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
 
-  const totals = useMemo(() => {
-    const stats = Array.isArray(platformStats) ? platformStats : (platformStats?.data || platformStats || []);
-    const totalViews = dailyData.reduce((sum, item) => sum + (item.totalViews || 0), 0);
-    const totalFollowers = stats.reduce((sum, item) => sum + (item.maxFollowers || 0), 0);
-    const avgEngagement = stats.length > 0
-      ? stats.reduce((sum, item) => sum + (item.avgEngagement || 0), 0) / stats.length
-      : 0;
-    return { totalViews, totalFollowers, avgEngagement, stats };
-  }, [dailyData, platformStats]);
+    if (token && user?.role === 'creator') {
+      fetchCreatorProfile();
+    }
+  }, [token, user]);
 
-  const creatorLoading = metricsLoading || platformLoading;
-  const creatorError = metricsError || platformError;
+  const { data: accountsData, loading: accountsLoading, refetch: refetchAccounts } = useApi(
+    creatorProfile ? creator.getAccounts : null
+  );
+
+  // Update account list when fetched
+  useEffect(() => {
+    if (accountsData) {
+      const accounts = Array.isArray(accountsData)
+        ? accountsData
+        : Array.isArray(accountsData?.data)
+          ? accountsData.data
+          : [];
+      setConnectedAccounts(accounts);
+      setActiveAccountId((prevSelected) => {
+        if (!prevSelected) return accounts[0]?._id || '';
+        const stillExists = accounts.some((account) => account._id === prevSelected);
+        return stillExists ? prevSelected : (accounts[0]?._id || '');
+      });
+    }
+  }, [accountsData]);
+
+  // Handle OAuth success/error messages from URL parameters
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+    const platform = searchParams.get('platform');
+
+    if (success) {
+      setNotification({
+        type: 'success',
+        message: `${platform} account connected successfully!`
+      });
+      // Clean up URL
+      setSearchParams({});
+    } else if (error) {
+      setNotification({
+        type: 'error',
+        message: `Failed to connect ${platform}: ${error}`
+      });
+      // Clean up URL
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
+
+  // Handle account addition
+  const handleAccountAdded = (newAccountData) => {
+    setNotification({
+      type: 'success',
+      message: `${newAccountData.account.platform} account added successfully!`
+    });
+    refetchAccounts();
+  };
+
+  // Calculate aggregated metrics
+  const displayedAccounts = useMemo(() => {
+    if (!activeAccountId) return connectedAccounts;
+    return connectedAccounts.filter((account) => account._id === activeAccountId);
+  }, [connectedAccounts, activeAccountId]);
+
+  const aggregatedMetrics = useMemo(() => {
+    if (!displayedAccounts.length) {
+      return { totalFollowers: 0, totalViews: 0, totalGrowth24h: 0, totalAccounts: 0 };
+    }
+
+    const totalFollowers = displayedAccounts.reduce((sum, account) =>
+      sum + (account.todayStats?.followers || 0), 0
+    );
+    
+    const totalViews = displayedAccounts.reduce((sum, account) =>
+      sum + (account.todayStats?.totalViews || 0), 0
+    );
+    
+    const totalGrowth24h = displayedAccounts.reduce((sum, account) =>
+      sum + (account.todayStats?.growth24h || 0), 0
+    );
+
+    return {
+      totalFollowers,
+      totalViews,
+      totalGrowth24h,
+      totalAccounts: displayedAccounts.length
+    };
+  }, [displayedAccounts]);
+
+  // Platform distribution data
+  const platformDistribution = useMemo(() => {
+    const distribution = {};
+    displayedAccounts.forEach(account => {
+      const platform = account.platform;
+      if (!distribution[platform]) {
+        distribution[platform] = {
+          platform,
+          totalViews: 0,
+          totalLikes: 0
+        };
+      }
+      distribution[platform].totalViews += account?.todayStats?.totalViews || 0;
+      distribution[platform].totalLikes += account?.todayStats?.totalLikes || 0;
+    });
+    return Object.values(distribution);
+  }, [displayedAccounts]);
+
+  if (user?.role === 'admin') {
+    return <AdminDashboard />;
+  }
+
+  if (!token) {
+    return <Navigate to="/login" />;
+  }
+
+  // Handle account deletion
+  const handleDeleteAccount = async (accountId) => {
+    if (!window.confirm('Are you sure you want to remove this account?')) {
+      return;
+    }
+
+    try {
+      await creator.deleteAccount(accountId);
+      setNotification({
+        type: 'success',
+        message: 'Account removed successfully'
+      });
+      refetchAccounts();
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: 'Failed to remove account'
+      });
+    }
+  };
 
   return (
     <div className="page-container">
-      {/* Notification Banner */}
+      {/* Notification */}
       {notification && (
-        <div 
+        <div
           style={{
             padding: '1rem',
-            marginBottom: '1.5rem',
-            borderRadius: '8px',
+            marginBottom: '1rem',
+            borderRadius: '6px',
             backgroundColor: notification.type === 'success' 
-              ? 'rgba(76, 175, 80, 0.1)' 
-              : 'rgba(244, 67, 54, 0.1)',
-            border: `1px solid ${notification.type === 'success' ? 'rgba(76, 175, 80, 0.3)' : 'rgba(244, 67, 54, 0.3)'}`,
-            color: notification.type === 'success' ? 'rgb(76, 175, 80)' : 'rgb(244, 67, 54)',
+              ? 'rgba(16, 185, 129, 0.1)' 
+              : 'rgba(255, 68, 68, 0.1)',
+            border: `1px solid ${notification.type === 'success' ? 'var(--success)' : 'var(--danger)'}`,
+            color: notification.type === 'success' ? 'var(--success)' : 'var(--danger)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
           }}
         >
           <span>{notification.message}</span>
-          <button 
+          <button
             onClick={() => setNotification(null)}
             style={{
               background: 'none',
               border: 'none',
               color: 'inherit',
               cursor: 'pointer',
-              fontSize: '1.25rem',
-              padding: '0 0.5rem'
+              fontSize: '1.2rem'
             }}
           >
             ×
@@ -194,234 +252,261 @@ const CreatorDashboardView = () => {
         </div>
       )}
 
-      {/* Filtering Section */}
-      <div className="card-premium" style={{ marginBottom: '2rem' }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <div style={{ fontSize: 'var(--h2-size)', fontWeight: 800, marginBottom: '0.5rem' }}>
-            Filter Analytics
+      {/* Profile Loading State */}
+      {profileLoading && (
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <div>Loading your creator profile...</div>
+        </div>
+      )}
+
+      {/* No Creator Profile Found */}
+      {profileError === 'No Creator Found' && (
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <h2>No Creator Profile Found</h2>
+          <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+            You don't have a creator profile yet. Create one to start tracking your social media accounts.
+          </p>
+          <button
+            onClick={handleCreateProfile}
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: 'var(--primary)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '1rem'
+            }}
+          >
+            Create My Profile
+          </button>
+        </div>
+      )}
+
+      {/* Profile Error */}
+      {profileError && profileError !== 'No Creator Found' && (
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <h2>Error Loading Profile</h2>
+          <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>
+            {profileError}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: 'var(--primary)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
+      {/* Main Dashboard Content - Only show if profile exists */}
+      {creatorProfile && !profileError && (
+        <div>
+          {/* Header */}
+          <div style={{ marginBottom: '2rem' }}>
+            <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
+              Welcome back, {creatorProfile.name}!
+            </h1>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Track your social media performance and grow your audience
+            </p>
+            <div style={{ marginTop: '1rem', maxWidth: '420px' }}>
+              <SocialMediaSelector
+                creatorId={creatorProfile?._id}
+                accounts={connectedAccounts}
+                loading={accountsLoading}
+                onAccountSelect={setActiveAccountId}
+              />
+            </div>
           </div>
-          <div style={{ color: 'rgb(var(--text-secondary))', fontSize: '0.9rem' }}>
-            Filter your metrics by platform and specific accounts
+
+          {/* Add Account Section - Admin Only */}
+          {user?.role === 'admin' && <AddAccountForm onAccountAdded={handleAccountAdded} />}
+
+          {/* Metrics Overview */}
+          <div className="grid-premium" style={{ marginBottom: '2rem' }}>
+        <MetricCard
+          title="Total Followers"
+          value={aggregatedMetrics.totalFollowers.toLocaleString()}
+          icon="👥"
+          loading={accountsLoading}
+        />
+        <MetricCard
+          title="Total Views"
+          value={aggregatedMetrics.totalViews.toLocaleString()}
+          icon="👁️"
+          loading={accountsLoading}
+        />
+        <MetricCard
+          title="Connected Accounts"
+          value={aggregatedMetrics.totalAccounts}
+          icon="🔗"
+          loading={accountsLoading}
+        />
+        <MetricCard
+          title="Views Growth (24h)"
+          value={`+${aggregatedMetrics.totalGrowth24h.toLocaleString()}`}
+          icon="📈"
+          loading={accountsLoading}
+        />
+      </div>
+
+      {/* Charts Section */}
+      {connectedAccounts.length > 0 && (
+        <div className="section-gap">
+          <div className="grid-premium">
+            <StatsGraph
+              accountId={activeAccountId}
+            />
+            <PlatformChart data={platformDistribution} loading={accountsLoading} />
           </div>
         </div>
-        <div style={{ 
-          display: 'flex', 
-          gap: '1rem', 
-          flexWrap: 'wrap', 
-          alignItems: 'center',
-          flexDirection: isMobile ? 'column' : 'row'
+      )}
+
+      {/* Connected Accounts List */}
+      {connectedAccounts.length > 0 && (
+        <div className="card-premium" style={{ marginTop: '2rem' }}>
+          <h3 style={{ 
+            fontSize: '1.25rem', 
+            fontWeight: '600', 
+            marginBottom: '1.5rem',
+            color: 'var(--text-primary)'
+          }}>
+            Connected Accounts
+          </h3>
+          <div style={{ 
+            display: 'grid', 
+            gap: '1rem',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))'
+          }}>
+            {connectedAccounts.map((account) => (
+              <div
+                key={account._id}
+                style={{
+                  padding: '1rem',
+                  backgroundColor: 'var(--surface)',
+                  border: '1px solid var(--card-border)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem'
+                }}
+              >
+                <img
+                  src={account.profileImage || `https://ui-avatars.com/api/?name=${account.username}&background=random`}
+                  alt={account.username}
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '50%',
+                    objectFit: 'cover'
+                  }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    fontWeight: '600', 
+                    color: 'var(--text-primary)',
+                    marginBottom: '0.25rem'
+                  }}>
+                    {account.username}
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    color: 'var(--text-secondary)',
+                    marginBottom: '0.25rem'
+                  }}>
+                    {account.platform}
+                  </div>
+                  {account.todayStats && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {account.todayStats.followers?.toLocaleString() || 0} followers
+                      {account.todayStats.totalViews && (
+                        <span> • {account.todayStats.totalViews.toLocaleString()} views</span>
+                      )}
+                      <span style={{ color: 'var(--success)' }}>
+                        {` • +${(account.todayStats.growth24h || 0).toLocaleString()} (24h)`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {/* Delete button - Admin Only */}
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => handleDeleteAccount(account._id)}
+                    style={{
+                      padding: '0.5rem',
+                      backgroundColor: 'transparent',
+                      border: '1px solid var(--danger)',
+                      color: 'var(--danger)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {connectedAccounts.length === 0 && !accountsLoading && (
+        <div className="card-premium" style={{ 
+          textAlign: 'center', 
+          padding: '3rem',
+          marginTop: '2rem'
         }}>
           <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '0.5rem',
-            width: isMobile ? '100%' : 'auto'
+            fontSize: '3rem', 
+            marginBottom: '1rem',
+            opacity: 0.5
           }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgb(var(--text-secondary))' }}>
-              Platform
-            </label>
-            <select 
-              value={selectedPlatform} 
-              onChange={(e) => setSelectedPlatform(e.target.value)}
-              style={{
-                padding: '0.75rem 1rem',
-                borderRadius: '8px',
-                border: '1px solid rgb(var(--border))',
-                backgroundColor: 'rgb(var(--background))',
-                color: 'rgb(var(--text))',
-                fontSize: '0.95rem',
-                minWidth: isMobile ? '100%' : '150px',
-                minHeight: '44px'
-              }}
-            >
-              <option value="All">All Platforms</option>
-              <option value="YouTube">YouTube</option>
-              <option value="TikTok">TikTok</option>
-              <option value="Instagram">Instagram</option>
-            </select>
+            📊
           </div>
-          
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '0.5rem',
-            width: isMobile ? '100%' : 'auto'
+          <h3 style={{ 
+            fontSize: '1.25rem', 
+            fontWeight: '600', 
+            marginBottom: '0.5rem',
+            color: 'var(--text-primary)'
           }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgb(var(--text-secondary))' }}>
-              Account
-            </label>
-            <select 
-              value={selectedAccount} 
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              disabled={filteredAccounts.length === 0}
-              style={{
-                padding: '0.75rem 1rem',
-                borderRadius: '8px',
-                border: '1px solid rgb(var(--border))',
-                backgroundColor: 'rgb(var(--background))',
-                color: 'rgb(var(--text))',
-                fontSize: '0.95rem',
-                minWidth: isMobile ? '100%' : '200px',
-                minHeight: '44px',
-                opacity: filteredAccounts.length === 0 ? 0.5 : 1
-              }}
-            >
-              <option value="All">All Accounts</option>
-              {filteredAccounts.map(account => (
-                <option key={account._id} value={account._id}>
-                  {account.accountName || `${account.platform} Account`}
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          {(selectedPlatform !== 'All' || selectedAccount !== 'All') && (
-            <button 
-              onClick={() => {
-                setSelectedPlatform('All');
-                setSelectedAccount('All');
-              }}
-              style={{
-                padding: '0.75rem 1rem',
-                borderRadius: '8px',
-                border: '1px solid rgb(var(--border))',
-                backgroundColor: 'transparent',
-                color: 'rgb(var(--text-secondary))',
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                alignSelf: isMobile ? 'stretch' : 'flex-end',
-                minHeight: '44px',
-                width: isMobile ? '100%' : 'auto'
-              }}
-            >
-              Clear Filters
-            </button>
-          )}
+            No Accounts Connected Yet
+          </h3>
+          <p style={{ 
+            color: 'var(--text-secondary)', 
+            marginBottom: '1.5rem'
+          }}>
+            Connect your social media accounts above to start tracking your analytics
+          </p>
         </div>
-      </div>
-
-      {/* Account Linking Section */}
-      <div className="card-premium" style={{ marginBottom: '2rem' }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>
-            Connect Your Accounts
-          </div>
-          <div style={{ color: 'rgb(var(--text-secondary))', fontSize: '0.9rem' }}>
-            Link your social media accounts to track performance metrics
-          </div>
+      )}
         </div>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => handleConnectPlatform('YouTube')}
-            className="btn"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.75rem 1.5rem',
-              fontSize: '0.95rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            <span>📺</span>
-            Connect YouTube
-          </button>
-          <button
-            onClick={() => handleConnectPlatform('Instagram')}
-            className="btn"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.75rem 1.5rem',
-              fontSize: '0.95rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            <span>📷</span>
-            Connect Instagram
-          </button>
-          <button
-            onClick={() => handleConnectPlatform('TikTok')}
-            className="btn"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.75rem 1.5rem',
-              fontSize: '0.95rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            <span>🎵</span>
-            Connect TikTok
-          </button>
-        </div>
-      </div>
-
-      <div className="card-premium">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5rem', flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ color: 'rgb(var(--text-secondary))', fontWeight: 700, letterSpacing: 0.3 }}>
-              Performance
-            </div>
-            <div style={{ fontSize: '2.25rem', fontWeight: 900, marginTop: 6 }}>
-              254.4% <span style={{ color: 'rgb(var(--success))', fontSize: '1.25rem', fontWeight: 800 }}>↑ 12.3%</span>
-            </div>
-            <div style={{ color: 'rgb(var(--text-secondary))', marginTop: 6 }}>
-              Last 30 days · premium insights
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <span className="btn" style={{ cursor: 'default' }}>Live</span>
-            <span className="btn" style={{ cursor: 'default', background: 'rgb(var(--accent) / 0.18)', borderColor: 'rgb(var(--accent) / 0.6)' }}>
-              Creator
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: '2.5rem' }} className="grid-premium">
-        <MetricCard title="Total Views" value={totals.totalViews} icon={<span>👁️</span>} trend={12} />
-        <MetricCard title="Total Followers" value={totals.totalFollowers} icon={<span>👥</span>} />
-        <MetricCard title="Avg Engagement" value={`${totals.avgEngagement.toFixed(1)}%`} icon={<span>❤️</span>} />
-      </div>
-
-      <div style={{ marginTop: '4rem' }} className="section-gap">
-        <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>Charts</div>
-        <div className="section-gap">
-          <div className="card chart-card-full">
-            <ViewsChart data={dailyData} />
-          </div>
-          <div className="grid-premium">
-            <div className="card chart-card">
-              <PlatformChart data={totals.stats || []} />
-            </div>
-            <div className="card chart-card">
-              <EngagementPie data={totals.stats || []} />
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
 
 const DashboardPage = () => {
-  const { user, loading } = useAuth();
+  const { user, token } = useAuth();
 
-  if (loading) {
-    return <div className="page-container"><div>Loading...</div></div>;
-  }
-
-  if (!user) {
+  if (!token) {
     return <Navigate to="/login" />;
   }
 
-  return user.role === 'creator' ? <CreatorDashboardView /> : <AdminDashboard />;
+  if (user?.role === 'admin') {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <CreatorDashboardView />;
 };
 
 export default DashboardPage;

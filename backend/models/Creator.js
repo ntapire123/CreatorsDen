@@ -19,6 +19,28 @@ const accountSchema = new mongoose.Schema({
   }
 }, { _id: true });
 
+const socialAccountSchema = new mongoose.Schema({
+  platform: {
+    type: String,
+    enum: ['Instagram', 'YouTube', 'TikTok', 'Twitter'],
+    required: true
+  },
+  accountName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  accountId: {
+    type: String,
+    default: null
+  },
+  accessToken: {
+    type: String,
+    default: null,
+    select: false
+  }
+}, { _id: true });
+
 const creatorSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -27,12 +49,21 @@ const creatorSchema = new mongoose.Schema({
   },
   name: {
     type: String,
-    required: true
+    required: true,
+    trim: true
+  },
+  email: {
+    type: String,
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    trim: true
   },
   bio: {
     type: String
   },
-  accounts: [accountSchema]
+  accounts: [accountSchema],
+  socialAccounts: [socialAccountSchema]
 }, {
   timestamps: true
 });

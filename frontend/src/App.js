@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './styles/global.css';
@@ -8,7 +8,7 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AddCreatorPage from './pages/admin/AddCreatorPage';
-import Layout from './components/Layout';
+import Layout from './components/Layout.js';
 import PublicLayout from './components/PublicLayout';
 
 // Protected Route for creators
@@ -22,7 +22,7 @@ function ProtectedRoute({ children }) {
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="loader">Loading...</div>;
-  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" />;
+  if (!user || user.role !== 'admin') return <Navigate to="/" />;
   return children;
 }
 
@@ -32,12 +32,12 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/terms" element={<PublicLayout><TermsOfServicePage /></PublicLayout>} />
       <Route path="/privacy" element={<PublicLayout><PrivacyPolicyPage /></PublicLayout>} />
-      <Route path="/dashboard" element={<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute><Layout><DashboardPage /></Layout></ProtectedRoute>} />
       <Route path="/admin" element={<AdminRoute><Layout><AdminDashboard /></Layout></AdminRoute>} />
       <Route path="/admin/top-performers" element={<AdminRoute><Navigate to="/admin?tab=top-performers" replace /></AdminRoute>} />
       <Route path="/admin/creator/:creatorId" element={<AdminRoute><Layout><AdminDashboard /></Layout></AdminRoute>} />
       <Route path="/admin/add-creator" element={<AdminRoute><Layout><AddCreatorPage /></Layout></AdminRoute>} />
-      <Route path="/" element={<Navigate to="/dashboard" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

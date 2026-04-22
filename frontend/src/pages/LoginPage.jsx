@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import './AuthForm.css'; // Import shared styles
 import Footer from '../components/Footer';
 
@@ -26,7 +26,19 @@ const LoginPage = () => {
       setError('');
       setLoading(true);
       await login(email, password);
-      navigate('/dashboard'); // Redirect on successful login
+      // Redirect to appropriate dashboard based on user role
+      let user = null;
+      try {
+        const savedUser = localStorage.getItem('user');
+        user = savedUser ? JSON.parse(savedUser) : null;
+      } catch (parseError) {
+        user = null;
+      }
+      if (user?.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       // The error message is caught from the AuthContext
       setError(err.message || 'An unexpected error occurred.');

@@ -4,7 +4,6 @@ import './DataTable.css';
 const DataTable = ({ columns, data, onRowClick, selectedRow, rowsPerPage = 10 }) => {
   const [sortConfig, setSortConfig] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [loading, setLoading] = useState(false);
 
   const sortedData = useMemo(() => {
     let sortableData = [...data];
@@ -45,10 +44,6 @@ const DataTable = ({ columns, data, onRowClick, selectedRow, rowsPerPage = 10 })
   const handlePrevPage = () => {
     setCurrentPage((prev) => Math.max(prev - 1, 1));
   };
-
-  if (loading) {
-    return <div className="loading-spinner">Loading...</div>;
-  }
 
   if (data.length === 0) {
     return <div className="empty-state">No data available.</div>;

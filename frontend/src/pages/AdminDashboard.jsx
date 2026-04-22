@@ -9,9 +9,12 @@ import SearchBar from '../components/SearchBar';
 import ViewsChart from '../components/ViewsChart';
 import PlatformChart from '../components/PlatformChart';
 import EngagementPie from '../components/EngagementPie';
+import AddAccountForm from '../components/AddAccountForm';
 import useApi from '../hooks/useApi';
-import { admin, oauth } from '../services/api';
+import { admin } from '../services/api';
 import './AdminDashboard.css';
+
+const getAccountIdentifier = (account) => String(account?.accountId || account?._id || '');
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -29,6 +32,8 @@ const AdminDashboard = () => {
   const [creatorDetailData, setCreatorDetailData] = useState(null);
   const [creatorDetailLoading, setCreatorDetailLoading] = useState(false);
   const [creatorDetailError, setCreatorDetailError] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [activeDetailAccountId, setActiveDetailAccountId] = useState('');
 
   const fetchCreatorDetail = useCallback(async () => {
     if (!creatorId) return;
@@ -36,7 +41,26 @@ const AdminDashboard = () => {
     setCreatorDetailError(null);
     try {
       const response = await admin.getCreatorDetails(creatorId);
+      
+      const actualData = response.data.data;
+      const creatorObj = actualData.creator;
+
       setCreatorDetailData(response.data);
+      
+      const accounts = creatorObj.accounts || [];
+      setActiveDetailAccountId((prevSelected) => {
+        if (!prevSelected) return getAccountIdentifier(accounts[0]);
+        const stillExists = accounts.some((account) => getAccountIdentifier(account) === String(prevSelected));
+        return stillExists ? prevSelected : getAccountIdentifier(accounts[0]);
+      });
+
+      const totalV = accounts.reduce((acc, curr) => acc + (curr.totalViews || 0), 0);
+      const totalF = accounts.reduce((acc, curr) => acc + (curr.followers || 0), 0);
+      setCreatorDetailData(prev => ({
+        ...prev,
+        totalViews: totalV,
+        totalFollowers: totalF
+      }));
     } catch (err) {
       setCreatorDetailError(err.message);
     } finally {
@@ -44,13 +68,47 @@ const AdminDashboard = () => {
     }
   }, [creatorId]);
 
+  const handleAccountAdded = async (newAccountData) => {
+    setNotification({
+      type: 'success',
+      message: 'Account added successfully!'
+    });
+    await fetchCreatorDetail(); // Refresh data
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleDeleteCreator = async () => {
+    if (!window.confirm(`Are you sure you want to delete creator "${creatorDetailData?.data?.creator?.name || 'this creator'}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await admin.deleteCreator(creatorId);
+      setNotification({
+        type: 'success',
+        message: 'Creator deleted successfully'
+      });
+      setTimeout(() => {
+        navigate('/admin');
+      }, 1000);
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: 'Failed to delete creator'
+      });
+    }
+  };
+
   useEffect(() => {
     if (creatorId) {
       fetchCreatorDetail();
     }
   }, [creatorId, fetchCreatorDetail]);
 
-  const creators = Array.isArray(creatorsData) ? creatorsData : (creatorsData?.data || []);
+  const creators = useMemo(
+    () => (Array.isArray(creatorsData) ? creatorsData : (creatorsData?.data || [])),
+    [creatorsData]
+  );
   const topPerformers = Array.isArray(topPerformersData) ? topPerformersData : (topPerformersData?.data || []);
 
   useEffect(() => {
@@ -139,27 +197,134 @@ const AdminDashboard = () => {
   };
 
   // Transform data for creator detail charts
+  const selectedDetailAccounts = useMemo(() => {
+    const allAccounts = creatorDetailData?.data?.creator?.accounts || [];
+    if (!activeDetailAccountId) return allAccounts;
+    return allAccounts.filter((account) => getAccountIdentifier(account) === String(activeDetailAccountId));
+  }, [creatorDetailData, activeDetailAccountId]);
+
+  const detailTotals = useMemo(() => {
+    const totalViews = selectedDetailAccounts.reduce((sum, account) => sum + (account.totalViews || 0), 0);
+    const totalFollowers = selectedDetailAccounts.reduce((sum, account) => sum + (account.followers || 0), 0);
+    return {
+      totalViews,
+      totalFollowers,
+      totalAccounts: selectedDetailAccounts.length
+    };
+  }, [selectedDetailAccounts]);
+
   const creatorMetrics = useMemo(() => {
     if (!creatorDetailData?.data) return { dailyData: [], platformStats: [] };
 
-    const metrics = creatorDetailData.data.metricsAggregated || [];
-    const platformStats = creatorDetailData.data.platformStats || [];
+    const metricsAggregated = Array.isArray(creatorDetailData.data.metricsAggregated)
+      ? creatorDetailData.data.metricsAggregated
+      : [];
 
-    const grouped = metrics.reduce((acc, item) => {
-      const date = item._id?.date || item.date;
-      if (!date) return acc;
-      
-      if (!acc[date]) {
-        acc[date] = { date, totalViews: 0 };
+    // Use historical analytics data so charts show progression over time, not just current snapshot.
+    const filteredMetrics = activeDetailAccountId
+      ? metricsAggregated.filter((item) => String(item?._id?.accountId) === String(activeDetailAccountId))
+      : metricsAggregated;
+
+    // Build per-day totals, then convert to "views gained" deltas.
+    const dailyMap = filteredMetrics.reduce((acc, item) => {
+      const dateKey = item?._id?.date;
+      if (!dateKey) return acc;
+
+      if (!acc[dateKey]) {
+        acc[dateKey] = {
+          date: dateKey,
+          totalViews: 0,
+          followers: 0,
+        };
       }
-      acc[date].totalViews += item.totalViews || 0;
+
+      acc[dateKey].totalViews += item.totalViews || 0;
+      acc[dateKey].followers += item.avgFollowers || 0;
       return acc;
     }, {});
 
-    const dailyData = Object.values(grouped).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const dailyTotals = Object.values(dailyMap).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const dailyData = dailyTotals.map((point, index) => {
+      // If only one point exists, show the known total instead of a zero delta.
+      if (dailyTotals.length === 1) {
+        return { ...point, totalViews: point.totalViews || 0 };
+      }
+
+      if (index === 0) {
+        return { ...point, totalViews: 0 };
+      }
+
+      const prev = dailyTotals[index - 1];
+      return {
+        ...point,
+        totalViews: Math.max(0, (point.totalViews || 0) - (prev.totalViews || 0)),
+      };
+    });
+
+    // Build platform summary from historical metrics in current filter scope.
+    const platformMap = filteredMetrics.reduce((acc, item) => {
+      const platform = item?._id?.platform || 'Unknown';
+      if (!acc[platform]) {
+        acc[platform] = {
+          platform,
+          totalViews: 0,
+          maxFollowers: 0,
+          avgEngagement: 0,
+          totalLikes: 0,
+        };
+      }
+
+      acc[platform].totalViews += item.totalViews || 0;
+      acc[platform].maxFollowers = Math.max(acc[platform].maxFollowers, item.avgFollowers || 0);
+      return acc;
+    }, {});
+
+    const platformStats = Object.values(platformMap).map((item) => {
+      const engagementBase = Math.max(item.maxFollowers || 0, 1);
+      return {
+        ...item,
+        // Proxy engagement so pie chart has meaningful non-zero values.
+        avgEngagement: Number(((item.totalViews / engagementBase) * 100).toFixed(2)),
+      };
+    });
+
+    // Fallback to current account snapshot only when no historical points exist yet.
+    if (dailyData.length === 0 && selectedDetailAccounts.length > 0) {
+      const snapshotPoint = {
+        date: new Date().toISOString().slice(0, 10),
+        totalViews: 0,
+        followers: selectedDetailAccounts.reduce((sum, account) => sum + (account.followers || 0), 0),
+      };
+
+      const snapshotPlatformStats = selectedDetailAccounts.reduce((acc, account) => {
+        const platform = account.platform || 'Unknown';
+        if (!acc[platform]) {
+          acc[platform] = {
+            platform,
+            totalViews: 0,
+            maxFollowers: 0,
+            avgEngagement: 0,
+            totalLikes: 0,
+          };
+        }
+        acc[platform].totalViews += account.totalViews || 0;
+        acc[platform].maxFollowers = Math.max(acc[platform].maxFollowers, account.followers || 0);
+        return acc;
+      }, {});
+
+      const platformFallback = Object.values(snapshotPlatformStats).map((item) => ({
+        ...item,
+        avgEngagement: Number(((item.totalViews / Math.max(item.maxFollowers || 0, 1)) * 100).toFixed(2)),
+      }));
+
+      return {
+        dailyData: [snapshotPoint],
+        platformStats: platformFallback,
+      };
+    }
 
     return { dailyData, platformStats };
-  }, [creatorDetailData]);
+  }, [creatorDetailData, selectedDetailAccounts, activeDetailAccountId]);
 
   if (!user || user.role !== 'admin') {
     return <Navigate to="/login" />;
@@ -249,6 +414,39 @@ const AdminDashboard = () => {
 
       {activeTab === 'detail' && creatorId && (
         <div className="creator-detail-tab section-gap">
+          {/* Notification */}
+          {notification && (
+            <div
+              style={{
+                padding: '1rem',
+                marginBottom: '1rem',
+                borderRadius: '6px',
+                backgroundColor: notification.type === 'success' 
+                  ? 'rgba(16, 185, 129, 0.1)' 
+                  : 'rgba(255, 68, 68, 0.1)',
+                border: `1px solid ${notification.type === 'success' ? '#10b981' : '#ef4444'}`,
+                color: notification.type === 'success' ? '#10b981' : '#ef4444',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span>{notification.message}</span>
+              <button
+                onClick={() => setNotification(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem'
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           <div className="detail-header">
             <button onClick={handleBackToOverview} className="back-btn">
               ← Back to Overview
@@ -256,6 +454,24 @@ const AdminDashboard = () => {
             <h1>
               Creator: {creatorDetailData?.data?.creator?.name || 'Loading...'}
             </h1>
+            {/* Admin-only delete creator button */}
+            {user?.role === 'admin' && (
+              <button
+                onClick={handleDeleteCreator}
+                style={{
+                  marginLeft: '1rem',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                🗑️ Delete Creator
+              </button>
+            )}
           </div>
 
           {creatorDetailLoading ? (
@@ -283,20 +499,66 @@ const AdminDashboard = () => {
                 <div className="metric-cards-grid grid-luxe">
                   <MetricCard 
                     title="Total Views" 
-                    value={creatorMetrics.dailyData.reduce((sum, item) => sum + (item.totalViews || 0), 0)} 
+                    value={detailTotals.totalViews.toLocaleString()} 
                     icon={<span>👁️</span>}
                   />
                   <MetricCard 
                     title="Total Followers" 
-                    value={creatorMetrics.platformStats.reduce((sum, item) => sum + (item.maxFollowers || 0), 0)} 
+                    value={detailTotals.totalFollowers.toLocaleString()} 
                     icon={<span>👥</span>}
                   />
                   <MetricCard 
-                    title="Avg Engagement" 
-                    value={`${creatorMetrics.platformStats.length > 0 ? (creatorMetrics.platformStats.reduce((sum, item) => sum + (item.avgEngagement || 0), 0) / creatorMetrics.platformStats.length).toFixed(1) : '0'}%`} 
-                    icon={<span>❤️</span>}
+                    title="Connected Accounts" 
+                    value={detailTotals.totalAccounts} 
+                    icon={<span>🔗</span>}
                   />
                 </div>
+
+                {creatorDetailData?.data?.creator?.accounts?.length > 1 && (
+                  <div className="card" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                    <label htmlFor="admin-account-selector" style={{ display: 'block', marginBottom: '0.5rem' }}>
+                      View stats for account
+                    </label>
+                    <select
+                      id="admin-account-selector"
+                      value={activeDetailAccountId}
+                      onChange={(e) => setActiveDetailAccountId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        maxWidth: '420px',
+                        padding: '0.6rem 0.75rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--card-border)',
+                        backgroundColor: 'var(--surface)',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      <option value="">All connected accounts</option>
+                      {creatorDetailData.data.creator.accounts.map((account) => (
+                        <option key={getAccountIdentifier(account)} value={getAccountIdentifier(account)}>
+                          {account.platform} - {account.accountName || account.username || account.accountId}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Account Management Section - Admin Only */}
+                {user?.role === 'admin' && (
+                  <div className="account-management-section section-gap">
+                    <div className="card">
+                      <h2 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
+                        Account Management
+                      </h2>
+                      
+                      {/* Add Account Form */}
+                      <AddAccountForm 
+                        onAccountAdded={handleAccountAdded} 
+                        creatorId={creatorId}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="charts-section section-gap">
                   <div className="chart-row-full">
@@ -314,15 +576,21 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
-                {creatorDetailData.data.creator?.accounts && creatorDetailData.data.creator.accounts.length > 0 && (
+                {selectedDetailAccounts && selectedDetailAccounts.length > 0 && (
                   <div className="accounts-section card">
                     <h3>Connected Accounts</h3>
                     <div className="accounts-list">
-                      {creatorDetailData.data.creator.accounts.map(acc => (
+                      {selectedDetailAccounts.map(acc => (
                         <div key={acc._id} className="account-item">
                           <div className="account-info">
                             <span className="account-platform">{acc.platform}</span>
                             <span className="account-name">{acc.accountName || acc.displayName || acc.username}</span>
+                            {acc.latestStats && (
+                              <div className="account-stats">
+                                <span>Followers: {acc.latestStats.followers.toLocaleString()}</span>
+                                <span>Views: {acc.latestStats.totalViews.toLocaleString()}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

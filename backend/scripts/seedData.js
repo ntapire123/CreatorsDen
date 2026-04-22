@@ -3,7 +3,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('../config/db');
 const User = require('../models/User');
-const Creator = require('../models/Creator');
+const Account = require('../models/Account');
 const Analytics = require('../models/Analytics');
 
 // Load environment variables from the correct path
@@ -15,10 +15,10 @@ const seedData = async () => {
   try {
     // Clear existing data
     await User.deleteMany({});
-    await Creator.deleteMany({});
+    await Account.deleteMany({});
     await Analytics.deleteMany({});
 
-    console.log('Deleted all Users, Creators, and Analytics');
+    console.log('Deleted all Users, Accounts, and Analytics');
 
     // Create new admin user
     const adminUser = new User({
@@ -40,20 +40,41 @@ const seedData = async () => {
     await creatorUser.save();
     console.log('Seeded new creator user:', creatorUser.email);
 
-    // Create creator profile
-    const creatorProfile = new Creator({
-      userId: creatorUser._id,
-      name: 'Test Creator',
-      bio: 'A test creator for demonstration purposes',
-      accounts: []
+    // Create example account for the creator
+    const exampleAccount = new Account({
+      creatorId: creatorUser._id,
+      platform: 'YouTube',
+      username: 'MrBeast',
+      profileUrl: 'https://youtube.com/@mrbeast',
+      profileImage: 'https://placehold.co/100'
     });
 
-    await creatorProfile.save();
-    console.log('Seeded creator profile for:', creatorProfile.name);
+    await exampleAccount.save();
+    console.log('Seeded example account:', exampleAccount.platform, '-', exampleAccount.username);
+
+    // Create 7-day analytics history for the account
+    for (let i = 6; i >= 0; i--) {
+      const analyticsDate = new Date();
+      analyticsDate.setDate(analyticsDate.getDate() - i);
+      
+      const followers = 100000 + ((6 - i) * 1000); // Growing from 100k to 106k
+      const totalViews = 500000 + ((6 - i) * 5000); // Growing from 500k to 530k
+
+      const analyticsEntry = new Analytics({
+        accountId: exampleAccount._id,
+        date: analyticsDate,
+        followers: followers,
+        totalViews: totalViews
+      });
+
+      await analyticsEntry.save();
+      console.log(`Seeded analytics for day ${6 - i}: ${analyticsDate.toDateString()} - Followers: ${followers}, Views: ${totalViews}`);
+    }
 
     console.log('Seeding complete! Users created:');
     console.log('- Admin: hhoossttiinngg@gmail.com / Ck5fGatgTahSZIaX');
     console.log('- Creator: creator@test.com / creator123');
+    console.log('- Example Account: YouTube - MrBeast with 7-day analytics history');
     
     process.exit();
   } catch (error) {
